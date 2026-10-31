@@ -62,6 +62,6 @@ Executar em 0.0.0.0 sem --allow-public-bind falha de forma segura.
     python -m compileall -q src
     smtp-honeypot --help
 
-GitHub Actions valida Linux, macOS e Windows com Python 3.11, 3.12 e 3.13. Dependabot monitora dependências e Actions.
+GitHub Actions valida **Ubuntu e Windows** com Python 3.11, 3.12 e 3.13. **macOS não possui validação automatizada de integração SMTP**: os runners hospedados apresentaram bloqueio no handshake SMTP local (greeting), mesmo após aumentar timeout, definir hostname e usar protocolo asyncio diretamente. O suporte macOS permanece pendente de diagnóstico em ambiente adequado. Todos os testes devem ser executados também em um Mac real antes de declarar compatibilidade. Dependabot monitora dependências e Actions.
 
 Licença MIT. Para divulgação privada de falhas, veja SECURITY.md.

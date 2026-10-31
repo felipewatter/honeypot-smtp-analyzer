@@ -13,3 +13,5 @@
 ## 0.1.0
 
 - Protótipo inicial sem testes de recepção SMTP.
+
+- Nota de compatibilidade: integração SMTP em macOS não validada nos runners GitHub; matriz obrigatória limita-se a Ubuntu e Windows até resolução.
