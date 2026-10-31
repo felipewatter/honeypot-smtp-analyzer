@@ -1,4 +1,6 @@
 import asyncio
+import faulthandler
+import sys
 import json
 import smtplib
 import socket
@@ -32,6 +34,8 @@ class RealSMTPIntegrationTests(unittest.TestCase):
         self.thread.start()
         self.addCleanup(self._shutdown)
         self.assertTrue(self.ready.wait(10), "SMTP server did not bind")
+        if sys.platform == "darwin":
+            faulthandler.dump_traceback_later(8, repeat=False, file=sys.stderr)
         if self.start_error:
             raise self.start_error
 
@@ -66,6 +70,8 @@ class RealSMTPIntegrationTests(unittest.TestCase):
             self.loop.close()
 
     def _shutdown(self):
+        if sys.platform == "darwin":
+            faulthandler.cancel_dump_traceback_later()
         if self.thread.is_alive():
             if self.loop is not None and self.loop.is_running():
                 self.loop.call_soon_threadsafe(self.loop.stop)
