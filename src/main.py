@@ -51,7 +51,7 @@ def main(argv=None):
         decode_data=False,
         enable_SMTPUTF8=False,
         command_call_limit=100,
-        timeout=60,
+        timeout=60, ready_timeout=30.0,
     )
     shutdown = threading.Event()
     if threading.current_thread() is threading.main_thread():

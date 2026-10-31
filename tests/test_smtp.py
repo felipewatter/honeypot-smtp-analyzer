@@ -25,7 +25,7 @@ class RealSMTPIntegrationTests(unittest.TestCase):
             HoneypotHandler(self.path, max_message_bytes=4096),
             hostname="127.0.0.1", port=self.port,
             data_size_limit=4096, command_call_limit=100,
-            timeout=10,
+            timeout=10, ready_timeout=30.0,
         )
         self.controller.start()
 
