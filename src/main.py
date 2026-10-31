@@ -41,6 +41,7 @@ def make_smtp_protocol(handler, max_message_bytes):
     """Use the same protocol factory in production and integration tests."""
     return SMTP(
         handler,
+        hostname="smtp-honeypot.local",  # Never block on system FQDN lookup.
         data_size_limit=max_message_bytes,
         decode_data=False,
         enable_SMTPUTF8=False,
