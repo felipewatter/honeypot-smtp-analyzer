@@ -27,8 +27,8 @@ def analyze_message(raw):
         message = BytesParser(policy=policy.default).parsebytes(raw)
         original = raw
     elif isinstance(raw, Message):
-        message = raw
         original = raw.as_bytes()
+        message = BytesParser(policy=policy.default).parsebytes(original)
     else:
         raise TypeError("Expected SMTP bytes or email.Message")
 
