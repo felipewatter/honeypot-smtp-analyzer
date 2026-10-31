@@ -25,7 +25,7 @@ class RealSMTPIntegrationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "capture" / "events.jsonl"
         self.port = unused_port()
-        self.loop = asyncio.new_event_loop()
+        self.loop = None  # Created in the worker to respect macOS kqueue thread affinity.
         self.ready = threading.Event()
         self.start_error = None
         self.thread = threading.Thread(target=self._server_thread, daemon=True)
@@ -36,6 +36,7 @@ class RealSMTPIntegrationTests(unittest.TestCase):
             raise self.start_error
 
     def _server_thread(self):
+        self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         try:
             handler = HoneypotHandler(self.path, max_message_bytes=4096)
@@ -66,7 +67,7 @@ class RealSMTPIntegrationTests(unittest.TestCase):
 
     def _shutdown(self):
         if self.thread.is_alive():
-            if self.loop.is_running():
+            if self.loop is not None and self.loop.is_running():
                 self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=10)
             self.assertFalse(self.thread.is_alive(), "SMTP server thread did not stop")
