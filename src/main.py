@@ -1,15 +1,18 @@
-"""Run a non-relaying SMTP honeypot; loopback by default."""
+"""Non-relaying SMTP server built with aiosmtpd and asyncio; loopback by default."""
 
 import argparse
+import asyncio
 import ipaddress
 import logging
 import signal
 import sys
-import threading
 from pathlib import Path
-from aiosmtpd.controller import Controller
+
+from aiosmtpd.smtp import SMTP
 from core.handler import HoneypotHandler
 from utils.logger import DEFAULT_LOG_FILE
+
+LOG = logging.getLogger(__name__)
 
 
 def is_loopback(host):
@@ -34,6 +37,38 @@ def make_parser():
     return parser
 
 
+def make_smtp_protocol(handler, max_message_bytes):
+    """Use the same protocol factory in production and integration tests."""
+    return SMTP(
+        handler,
+        data_size_limit=max_message_bytes,
+        decode_data=False,
+        enable_SMTPUTF8=False,
+        command_call_limit=100,
+        timeout=60,
+    )
+
+
+async def serve(args):
+    loop = asyncio.get_running_loop()
+    shutdown = asyncio.Event()
+    handler = HoneypotHandler(args.log_file, args.max_message_bytes)
+    server = await loop.create_server(
+        lambda: make_smtp_protocol(handler, args.max_message_bytes),
+        host=args.host,
+        port=args.port,
+    )
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, shutdown.set)
+        except (NotImplementedError, RuntimeError):
+            # Windows does not support loop.add_signal_handler.
+            signal.signal(signum, lambda _sig, _frame: loop.call_soon_threadsafe(shutdown.set))
+    LOG.info("Honeypot listening at %s:%d; relay disabled", args.host, args.port)
+    async with server:
+        await shutdown.wait()
+
+
 def main(argv=None):
     args = make_parser().parse_args(argv)
     if not 1 <= args.port <= 65535:
@@ -43,34 +78,10 @@ def main(argv=None):
     if not is_loopback(args.host) and not args.allow_public_bind:
         raise SystemExit("Public binding requires --allow-public-bind and isolated deployment")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    controller = Controller(
-        HoneypotHandler(args.log_file, args.max_message_bytes),
-        hostname=args.host,
-        port=args.port,
-        data_size_limit=args.max_message_bytes,
-        decode_data=False,
-        enable_SMTPUTF8=False,
-        command_call_limit=100,
-        timeout=60, ready_timeout=30.0,
-    )
-    shutdown = threading.Event()
-    if threading.current_thread() is threading.main_thread():
-        for signum in (signal.SIGTERM, signal.SIGINT):
-            try:
-                signal.signal(signum, lambda _sig, _frame: shutdown.set())
-            except (OSError, ValueError):
-                pass
-    started = False
     try:
-        controller.start()
-        started = True
-        logging.info("Honeypot listening at %s:%d; relay disabled", args.host, args.port)
-        shutdown.wait()
+        asyncio.run(serve(args))
     except KeyboardInterrupt:
         pass
-    finally:
-        if started:
-            controller.stop()
     return 0
 
 
