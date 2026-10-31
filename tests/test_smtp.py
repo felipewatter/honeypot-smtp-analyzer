@@ -47,6 +47,7 @@ class RealSMTPIntegrationTests(unittest.TestCase):
 
     def test_mail_is_accepted_but_never_forwarded(self):
         with smtplib.SMTP("127.0.0.1", self.port, timeout=5) as client:
+            client.ehlo()
             status, message = client.noop()
             self.assertEqual(status, 250)
             self.assertNotIn("AUTH", client.ehlo_resp.decode("ascii", errors="ignore").upper())
