@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=70,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "honeypot-smtp-analyzer"
+version = "0.2.0"
+description = "Non-relaying SMTP honeypot with offline MIME heuristics and metadata-only logs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Felipe Watter"}]
+dependencies = ["aiosmtpd==1.4.6"]
+keywords = ["security", "smtp", "honeypot", "phishing", "audit", "python"]
+
+[project.scripts]
+smtp-honeypot = "main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
