@@ -24,7 +24,7 @@ Alternativa no checkout: python src/main.py
 
 Teste local com Python (somente para uso autorizado):
 
-    python -c "import smtplib; s=smtplib.SMTP('127.0.0.1',2525,timeout=5); s.sendmail('lab@example.test',['honeypot@example.test'],'Subject: lab\n\nSee https://example.test/login'); s.quit()"
+    python -c "import smtplib; s=smtplib.SMTP('127.0.0.1',2525,timeout=5,local_hostname='test-client.local'); s.sendmail('lab@example.test',['honeypot@example.test'],'Subject: lab\n\nSee https://example.test/login'); s.quit()"
 
 Para ler o JSONL, que contém uma linha JSON por evento:
 
@@ -62,6 +62,6 @@ Executar em 0.0.0.0 sem --allow-public-bind falha de forma segura.
     python -m compileall -q src
     smtp-honeypot --help
 
-GitHub Actions valida **Ubuntu e Windows** com Python 3.11, 3.12 e 3.13. **macOS não possui validação automatizada de integração SMTP**: os runners hospedados apresentaram bloqueio no handshake SMTP local (greeting), mesmo após aumentar timeout, definir hostname e usar protocolo asyncio diretamente. O suporte macOS permanece pendente de diagnóstico em ambiente adequado. Todos os testes devem ser executados também em um Mac real antes de declarar compatibilidade. Dependabot monitora dependências e Actions.
+GitHub Actions valida **Ubuntu, Windows e macOS** com Python 3.11, 3.12 e 3.13, incluindo **transações SMTP reais** (greeting 220, EHLO, envio de mensagem, gravação em JSONL e não encaminhamento). Os nove jobs passaram na execução [#42321985141](https://github.com/felipewatter/honeypot-smtp-analyzer/actions/runs/42321985141) após o merge do [PR #6](https://github.com/felipewatter/honeypot-smtp-analyzer/pull/6). A falha anterior em macOS foi causada pela resolução de nome de host local do cliente de teste `smtplib.SMTP` (chamada demorada a `socket.getfqdn()` em runners macOS 15+). Os testes agora definem `local_hostname="test-client.local"` para evitar essa consulta, preservando conexões TCP e protocolo SMTP reais. Essa validação confirma os ambientes de CI citados, **não substitui testes em todas as versões de macOS ou instalações físicas**. Dependabot monitora dependências e Actions.
 
 Licença MIT. Para divulgação privada de falhas, veja SECURITY.md.
