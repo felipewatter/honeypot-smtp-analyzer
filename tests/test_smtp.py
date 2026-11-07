@@ -1,9 +1,7 @@
 import asyncio
 import json
 import smtplib
-import socket
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 
@@ -11,85 +9,62 @@ from core.handler import HoneypotHandler
 from main import is_loopback, main, make_parser, make_smtp_protocol
 
 
-def unused_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
-        server.bind(("127.0.0.1", 0))
-        return server.getsockname()[1]
+class RealSMTPIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    """Use the production asyncio protocol on the test's main event loop.
 
+    The blocking smtplib client runs in a worker thread; the SMTP server does
+    not. This avoids macOS kqueue event-loop thread-affinity/race problems and
+    verifies an actual TCP 220 greeting, SMTP commands, and the captured log.
+    """
 
-class RealSMTPIntegrationTests(unittest.TestCase):
-    """Test the real aiosmtpd protocol without Controller's unreliable readiness trigger."""
-
-    def setUp(self):
+    async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "capture" / "events.jsonl"
-        self.port = unused_port()
-        self.loop = None  # Created in the worker to respect macOS kqueue thread affinity.
-        self.ready = threading.Event()
-        self.start_error = None
-        self.thread = threading.Thread(target=self._server_thread, daemon=True)
-        self.thread.start()
-        self.addCleanup(self._shutdown)
-        self.assertTrue(self.ready.wait(10), "SMTP server did not bind")
-        if self.start_error:
-            raise self.start_error
+        handler = HoneypotHandler(self.path, max_message_bytes=4096)
+        self.server = await asyncio.get_running_loop().create_server(
+            lambda: make_smtp_protocol(handler, 4096),
+            host="127.0.0.1",
+            port=0,  # Bind the OS-selected port: no unused_port() race.
+        )
+        self.port = self.server.sockets[0].getsockname()[1]
 
-    def _server_thread(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        try:
-            handler = HoneypotHandler(self.path, max_message_bytes=4096)
-            self.server = self.loop.run_until_complete(
-                self.loop.create_server(
-                    lambda: make_smtp_protocol(handler, 4096),
-                    host="127.0.0.1",
-                    port=self.port,
+    async def asyncTearDown(self):
+        self.server.close()
+        await self.server.wait_closed()
+
+    async def _send(self, action):
+        # Never block the event loop responsible for generating the SMTP 220
+        # greeting. Enforce finite client and outer integration timeouts.
+        return await asyncio.wait_for(asyncio.to_thread(action), timeout=20)
+
+    async def test_live_smtp_transaction_writes_jsonl(self):
+        def send():
+            with smtplib.SMTP("127.0.0.1", self.port, timeout=10, local_hostname="test-client.local") as client:
+                client.sendmail(
+                    "sender@sample.test", ["rcpt@honeypot.test"],
+                    "From: sender@sample.test\r\nSubject: Integration\r\n\r\nVisit https://example.test/verify",
                 )
-            )
-        except BaseException as error:
-            self.start_error = error
-            self.ready.set()
-            self.loop.close()
-            return
-        self.ready.set()
-        try:
-            self.loop.run_forever()
-        finally:
-            self.server.close()
-            self.loop.run_until_complete(self.server.wait_closed())
-            pending = asyncio.all_tasks(self.loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            self.loop.close()
 
-    def _shutdown(self):
-        if self.thread.is_alive():
-            if self.loop is not None and self.loop.is_running():
-                self.loop.call_soon_threadsafe(self.loop.stop)
-            self.thread.join(timeout=10)
-            self.assertFalse(self.thread.is_alive(), "SMTP server thread did not stop")
-
-    def test_live_smtp_transaction_writes_jsonl(self):
-        with smtplib.SMTP("127.0.0.1", self.port, timeout=5) as client:
-            client.sendmail(
-                "sender@sample.test", ["rcpt@honeypot.test"],
-                "From: sender@sample.test\r\nSubject: Integration\r\n\r\nVisit https://example.test/verify",
-            )
+        await self._send(send)
         events = [json.loads(row) for row in self.path.read_text().splitlines()]
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["recipient_domains"], ["honeypot.test"])
         self.assertEqual(events[0]["url_domains"], ["example.test"])
         self.assertEqual(events[0]["risk_level"], "medium")
 
-    def test_mail_is_accepted_but_never_forwarded(self):
-        with smtplib.SMTP("127.0.0.1", self.port, timeout=5) as client:
-            code, message = client.ehlo()
-            self.assertEqual(code, 250)
-            self.assertNotIn("AUTH", message.decode("ascii", errors="ignore").upper())
-            client.sendmail("source@sample.test", ["not-real@sample.test"], "Subject: test\r\n\r\nNo real delivery.")
+    async def test_mail_is_accepted_but_never_forwarded(self):
+        def send():
+            with smtplib.SMTP("127.0.0.1", self.port, timeout=10, local_hostname="test-client.local") as client:
+                code, message = client.ehlo()
+                self.assertEqual(code, 250)
+                self.assertNotIn("AUTH", message.decode("ascii", errors="ignore").upper())
+                client.sendmail(
+                    "source@sample.test", ["not-real@sample.test"],
+                    "Subject: test\r\n\r\nNo real delivery.",
+                )
+
+        await self._send(send)
         self.assertEqual(len(self.path.read_text().splitlines()), 1)
 
 
