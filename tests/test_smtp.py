@@ -40,7 +40,7 @@ class RealSMTPIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_live_smtp_transaction_writes_jsonl(self):
         def send():
-            with smtplib.SMTP("127.0.0.1", self.port, timeout=10) as client:
+            with smtplib.SMTP("127.0.0.1", self.port, timeout=10, local_hostname="test-client.local") as client:
                 client.sendmail(
                     "sender@sample.test", ["rcpt@honeypot.test"],
                     "From: sender@sample.test\r\nSubject: Integration\r\n\r\nVisit https://example.test/verify",
@@ -55,7 +55,7 @@ class RealSMTPIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mail_is_accepted_but_never_forwarded(self):
         def send():
-            with smtplib.SMTP("127.0.0.1", self.port, timeout=10) as client:
+            with smtplib.SMTP("127.0.0.1", self.port, timeout=10, local_hostname="test-client.local") as client:
                 code, message = client.ehlo()
                 self.assertEqual(code, 250)
                 self.assertNotIn("AUTH", message.decode("ascii", errors="ignore").upper())
